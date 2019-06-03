@@ -13,12 +13,12 @@
 
 .SYNOPSIS
 Supply a remote SQL Server instance or use the default setting of the local SQL instance to backup all User/System Database files to a remote location or local location.
-Command line arguements can be supplied to determine the type of backup used and which databases are selected for backup.
+Command line arguments can be supplied to determine the type of backup used and which databases are selected for backup.
 
 .PARAMETER ConnectionString
 Calling Syntax: -ConnectionString "Servername\Instance" or -ConnectionString "Servername,Port"
 
-Parameter Description: When supplied, a connection will be atempted to backup databases on remote SQL Server Instance. When used, 
+Parameter Description: When supplied, a connection will be attempted to backup databases on remote SQL Server Instance. When used, 
 a Network UNC path must be supplied with the -Path Parameter so that the remote server is able to access the backup location
 
 .PARAMETER Path
@@ -44,7 +44,7 @@ Parameter Description: Log Backup Selection. This will be the type of backup use
 .PARAMETER Retention
 Calling Syntax: -Retention 7
 
-Parameter Description: Running powershell as admin is required for this command. This will attempt to delete databse backups that are older than the supplied time in days. The default value is 0 which will keep all backup files.
+Parameter Description: Running PowerShell as admin is required for this command. This will attempt to delete database backups that are older than the supplied time in days. The default value is 0 which will keep all backup files.
 
 .PARAMETER SystemDB
 Calling Syntax: -SystemDB
@@ -54,7 +54,7 @@ Parameter Description: When supplied system databases will be included in the ba
 .PARAMETER NoUserDB
 Calling Syntax: -NoUserDB
 
-Parameter Description: When supplied user databses files will be skipped.
+Parameter Description: When supplied user databases files will be skipped.
 
 .PARAMETER AlwaysOn
 Calling Syntax: -AlwaysOn
@@ -65,7 +65,7 @@ For databases that fall into this scope, when used with the -Full backup type, a
 .PARAMETER Database
 Calling Syntax: -Database "database" or -Database "database1,database2"
 
-Parameter Description: This parameter accepts one or more database names seperated by a comma. When used, backups will only be attempted on the databases that are supplied. 
+Parameter Description: This parameter accepts one or more database names separated by a comma. When used, backups will only be attempted on the databases that are supplied. 
 When including the names of a system or AlwaysOn secondary databases, the proper parameters need to be supplied to confirm that they are included. I.E. -SystemDB or -AlwaysOn
 
 .PARAMETER CopyOnly
@@ -76,7 +76,7 @@ Parameter Description: When supplied all full backups will be taken with the Cop
 .PARAMETER SelectDB
 Calling Syntax: -SelectDB
 
-Parameter Description: Opens up a GridView window for manual databse selection for backup
+Parameter Description: Opens up a GridView window for manual database selection for backup
 
 .PARAMETER Compression
 Calling Syntax: -Compression
@@ -86,13 +86,13 @@ Parameter Description: Turns the compression option on for SQL Backups if the se
 .PARAMETER Script
 Calling Syntax: -Script
 
-Parameter Description: Outputs the TSQL Backup commands into a text file stored in the backup directory for manual execution. When this option is used, it will not backup the databses,
+Parameter Description: Outputs the TSQL Backup commands into a text file stored in the backup directory for manual execution. When this option is used, it will not backup the databases,
 it will only export the TSQL commands.
 
 .PARAMETER WhatIf
 Calling Syntax: -WhatIf
 
-Parameter Description: Shows what would happen if the cmdlet runs. When this option is used, it will not backup the databses.
+Parameter Description: Shows what would happen if the cmdlet runs. When this option is used, it will not backup the databases.
 
 .PARAMETER CheckSum
 Calling Syntax: -CheckSum
@@ -115,7 +115,7 @@ Parameter Description: When used, supplies a SQL Server Account to use when conn
 Calling Syntax: -CSVFile ".\ServerList.csv"
 
 Parameter Description: Accepts a text or csv file with each server connection string on a new line. Will attempt to connect to each server using the connection string a backup according
-to the command line arguements supplied.
+to the command line arguments supplied.
 
 File Contents Example:
 SERVERNAMEDB01,57109
