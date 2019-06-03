@@ -112,12 +112,8 @@ Calling Syntax: -CSVFile ".\ServerList.csv"
 Parameter Description: Accepts a text or csv file with each server connection string on a new line. Will attempt to connect to each server using the connection string a backup according
 to the command line arguments supplied.
 
-File Contents Example:
-SERVERNAMEDB01,57109
-SERVERNAMEDB02\INSTANCENAME
+EXAMPLES:
 
-
-.EXAMPLE
 .\Backup-SQLDatabases.ps1 -Full -Path G:\Backup
     Create a Full backup for all User Databases on the local server to G:\Backup
 
