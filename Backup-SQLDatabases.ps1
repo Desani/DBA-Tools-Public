@@ -486,9 +486,8 @@ foreach ($i in $inst)
             $ConnectionSuccess++
         }
         If ($null -eq $Server.Instance) {
-            $SQLServerName = Invoke-SqlCmd -ServerInstance $Server.ConnectionString -Database "master" -Query 'select @@ServerName AS ServerName' -QueryTimeout 5 -ErrorAction Stop
-            $ServerTemp = Get-ServerObject $SQLServerName.ServerName
-            If ($null -eq $ServerTemp.Instance) {
+            $SQLInstanceName = Invoke-SqlCmd -ServerInstance $Server.ConnectionString -Database "master" -Query "SELECT SERVERPROPERTY ('InstanceName') AS Instance" -QueryTimeout 5 -ErrorAction Stop
+            If ($null -eq $SQLInstanceName.Instance) {
                 $Server.Instance = "MSSQLSERVER"
             } Else {
                 $Server.Instance = $ServerTemp.Instance
