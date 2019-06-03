@@ -490,7 +490,7 @@ foreach ($i in $inst)
             If ($null -eq $SQLInstanceName.Instance) {
                 $Server.Instance = "MSSQLSERVER"
             } Else {
-                $Server.Instance = $ServerTemp.Instance
+                $Server.Instance = $SQLInstanceName.Instance
             }
         }
     } Catch {
