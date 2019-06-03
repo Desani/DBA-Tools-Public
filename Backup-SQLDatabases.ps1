@@ -137,7 +137,7 @@ SERVERNAMEDB02\INSTANCENAME
     This will resuly in no database backups as DIFF is not supported for System Databases.
 
 .\Backup-SQLDatabase.ps1 -Log -Path G:\Backup -SelectDB -CheckSum -Verify -Compression
-    Create a log backup of all the databses selected in the Gridview generated from a list of all databases with compression on and calculate a checksum and verify all backups created.
+    Create a log backup of all the databases selected in the Gridview generated from a list of all databases with compression on and calculate a checksum and verify all backups created.
 
 .NOTES
 Version History
@@ -517,7 +517,7 @@ foreach ($i in $inst)
         # If the supplied database name using the -Database param has a value, check it with the current database name to make sure it is selected or else continue
         If (($Database -ne "" -and $DbArray -match $DB.Name) -or ($Database -eq "")) {
 
-            # Checks the current databse to make sure it is of normal status and it is not a snapshot before proceeding to backup
+            # Checks the current database to make sure it is of normal status and it is not a snapshot before proceeding to backup
             If (($DB.Status -match "Normal*" -and $DB.IsDatabaseSnapshot -ne "True") -and ($DB.Name -ne "TempDB")) {
 
                 # If the database is apart of an availability group check to make sure it is accessable or else continue
@@ -529,7 +529,7 @@ foreach ($i in $inst)
                         # Check to make sure that User Databases aren't being skipped with the -NoUserDB switch
                         If (!($NoUserDB -and ($DB.ID -gt 4))) {
 
-                            LogWrite "Databse Name: $($DB.Name)" -Colour "Cyan"
+                            LogWrite "Database Name: $($DB.Name)" -Colour "Cyan"
                             LogWrite "Database Recovery Mode: $($DB.RecoveryModel)"
                             LogWrite -log "Database Compatibility Level: $($DB.CompatibilityLevel)"
                             LogWrite -log "Database Owner: $($DB.Owner)"
