@@ -115,17 +115,20 @@ to the command line arguments supplied.
 EXAMPLES:
 
 .\Backup-SQLDatabases.ps1 -Full -Path G:\Backup
-    Create a Full backup for all User Databases on the local server to G:\Backup
+
+Create a Full backup for all User Databases on the local server to G:\Backup
 
 .\Backup-SQLDatabase.ps1 -Full -CopyOnly -Path G:\Backup -Database "foglightdb,dbadmin,master" -SystemDB -AlwaysOn -SQLCredential sysdba
-    Create a Full Copy-Only backup for only the Databases dbadmin, foglightdb and master on the local SQL Server to G:\Backup. Runs the backup
-    using the sysdba SQL Account.
-    -SystemDB and -AlwaysOn must be used to make sure the databases supplied are eligble for a backup as master is a SystemDB and
-    foglightdb is an AlwaysOn database. -AlwaysOn only needs to be supplied when running the backup on a secondary AlwaysOn server.
+
+Create a Full Copy-Only backup for only the Databases dbadmin, foglightdb and master on the local SQL Server to G:\Backup. Runs the backup using the sysdba SQL Account.
+-SystemDB and -AlwaysOn must be used to make sure the databases supplied are eligble for a backup as master is a SystemDB and
+foglightdb is an AlwaysOn database in this example. -AlwaysOn only needs to be supplied when running the backup on a secondary AlwaysOn server.
 
 .\Backup-SQLDatabase.ps1 -Diff -Path "\\NetworkLocation\sharedfolder" -Database -SystemDB -NoUserDB -ConnectionString "Servername,InstancePort" -Retention 14
-    Create a Diff backup of only the System Databases for a remote SQL Server Instance and attempts to remove backup files older than 14 days. 
-    This will resuly in no database backups as DIFF is not supported for System Databases.
+
+Create a Diff backup of only the System Databases for a remote SQL Server Instance and attempts to remove backup files older than 14 days. 
+This will resuly in no database backups as DIFF is not supported for System Databases.
 
 .\Backup-SQLDatabase.ps1 -Log -Path G:\Backup -SelectDB -CheckSum -Verify -Compression
-    Create a log backup of all the databses selected in the Gridview generated from a list of all databases with compression on and calculate a checksum and verify all backups created.
+ 
+ Create a log backup of all the databses selected in the Gridview generated from a list of all databases with compression on and calculate a checksum and verify all backups created.
