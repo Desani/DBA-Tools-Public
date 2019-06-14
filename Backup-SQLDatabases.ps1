@@ -147,11 +147,14 @@ Version History
     0.4 - Added in the SelectDB Gridview
     0.5 - Added the collection of more database details to the log
     0.6 - Added in the option to supply a SQL Server Account to be used when connecting to the database
-    0.7 - Re-Wrote Backup-SQLDatabase parameters into a Hash Table for building the query on the fly
+    0.7 - Re-Wrote Backup-SQLDatabase parameters into a Hash Table Splatting for building the query on the fly
     0.8 - Added in CheckSum and Verify for verification of a successful backup
     1.0 - Added in the functionality to read a server list from a CSV file and execute against each one.
     1.1 - Corrected issues with saving backups to multiple locations provided by the CSVFile
     1.2 - Refactored Server info into a funtion to return a server object and gather instance info for file organization
+    1.3 - Added a function to check the length of the backup file and reduce it to fit within the 255 char limit
+    1.4 - Added in checking for a DBNull value for an instance name returned
+    1.5 - Changed how the -AlwaysOn flag worked to provide a fallback to a COPYONLY backup if a full backup fails
 #>
 
 Param (
@@ -177,7 +180,7 @@ Param (
     [String]$CSVFile # If providing a CSV or Text file, will execute against each server listed
 )
 
-$ScriptVersion = 1.2
+$ScriptVersion = 1.5
 $Date = "$((Get-Date).ToString('yyyyMMdd-hhmmss'))"
 $Instance = ""
 $CurrentDBA = $env:USERDOMAIN + "\" + $env:USERNAME
@@ -241,6 +244,55 @@ Function Get-ServerObject
     }
 
     Return $ServerObject
+}
+
+# Function to return a a backup path that is less than 255 characters
+#**************************************************************
+Function Get-BackupPath
+#**************************************************************
+{
+    Param (
+        [String]$Path,
+        [String]$Database,
+        [Int]$Type
+    )
+
+    $DBName = $Database
+    $Path = Join-Path -Path $Path -ChildPath $DBName
+
+
+    If ($Type -eq 1) {
+        $BackupFile = Join-Path $Path -ChildPath "$DBName.FULL-$Date.bak"
+    } ElseIf ($Type -eq 2) {
+        $BackupFile = Join-Path $Path -ChildPath "$DBName.DIFF-$Date.bak"
+    } ElseIf ($Type -eq 3) {
+        $BackupFile = Join-Path $Path -ChildPath "$DBName.LOG-$Date.trn"
+    }
+
+    $NoError = $True
+
+    If ($BackupFile.Length -gt 255) {
+        DO {
+            Try {
+                $DBName = $DBName.Substring(0,$DBName.Length - 1)
+            } Catch {
+                $ErrorMessage = $_.Exception.Message
+                LogWrite "There was an issue bringing the backup file path under 255 characters. Please supply a shorter parent path to store the backup files." -Colour "Red"
+                LogWrite "Database Name: $Database"
+                LogWrite -log $ErrorMessage
+                $NoError = $False
+            }
+            If ($Type -eq 1) {
+                $BackupFile = Join-Path $Path -ChildPath "$DBName.FULL-$Date.bak"
+            } ElseIf ($Type -eq 2) {
+                $BackupFile = Join-Path $Path -ChildPath "$DBName.DIFF-$Date.bak"
+            } ElseIf ($Type -eq 3) {
+                $BackupFile = Join-Path $Path -ChildPath "$DBName.LOG-$Date.trn"
+            }
+        } while (($BackupFile.Length -gt 255) -and ($NoError))
+    }
+
+    Return $BackupFile
 }
 
 If ($Retention -gt 0) {
@@ -388,6 +440,11 @@ LogWrite "Server name determined: $($Server.Name)" -Colour "Cyan"
 LogWrite "Backing up SQL Databases to: $BackupPath"
 LogWrite "Backup Type: $BackupType" -Colour "Cyan"
 LogWrite "System Databases included: $SystemDB"
+
+If ($AlwaysOn) {
+    LogWrite "AlwaysOn flag is enabled. AlwaysOn secondary databases will be included in the backup."
+}
+
 LogWrite "Current Log File: $LogFile"
 
 If ($CSVFile) {
@@ -487,7 +544,7 @@ foreach ($i in $inst)
         }
         If ($null -eq $Server.Instance) {
             $SQLInstanceName = Invoke-SqlCmd -ServerInstance $Server.ConnectionString -Database "master" -Query "SELECT SERVERPROPERTY ('InstanceName') AS Instance" -QueryTimeout 5 -ErrorAction Stop
-            If ($null -eq $SQLInstanceName.Instance) {
+            If ([String]::IsNullOrEmpty($SQLInstanceName.Instance)) {
                 $Server.Instance = "MSSQLSERVER"
             } Else {
                 $Server.Instance = $SQLInstanceName.Instance
@@ -556,7 +613,7 @@ foreach ($i in $inst)
 
                             If ($WhatIf) {
                                 LogWrite "The Whatif Option has been enabled"
-                                $BackupParams.WhatIf  = $true
+                                $BackupParams.WhatIf = $true
                             }
                             
                             If ($Script) {
@@ -571,39 +628,66 @@ foreach ($i in $inst)
                             
                             # If the -Full backup mode is selected continue with the Full backup methods
                             If ($BackupType -eq "FULL") {
-                                $BackupFile = "$InstancePath\$($DB.Name)\$($DB.Name).FULL-$Date.bak"
-                                LogWrite "Backup Location: $BackupFile"
-                                $BackupParams.BackupFile = $BackupFile
-                                Try {
-                                    # If the database targeted by the full backup is a member of an AlwaysOn Availibliy group as a secondary or if -CopyOnly is selected, proceed with a Copyonly backup
-                                    If (($CopyOnly) -or (($AlwaysOn) -and ($DB.AvailabilityGroupName -ne ""))) {
-                                        LogWrite "Taking a COPY-ONLY backup of $($DB.Name)" -Colour "Magenta"
-                                        $BackupParams.CopyOnly = $true
-                                    # Create a Full Database backup
-                                    } Else {
-                                        LogWrite "Taking a FULL backup of $($DB.Name)" -Colour "Magenta"
-                                    }
+                                If (($AlwaysOn -eq $false) -and ($CopyOnly -eq $false) -and (($DB.AvailabilityGroupName -ne "") -and ($DB.IsUpdateable -ne "True"))) {
+                                    LogWrite "Skipping AlwaysOn Secondary Database $($DB.Name) on server $($Server.ConnectionString). AlwaysOn Secondary Databases are not select for backup" -Colour "Gray"
+                                } Else {
+                                    $BackupFile = Get-BackupPath -Path $InstancePath -Database $DB.Name -Type 1
 
-                                    $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
-                                    If ($Output) {
-                                        LogWrite $Output
+                                    LogWrite "Backup Location: $BackupFile"
+                                    $BackupParams.BackupFile = $BackupFile
+                                    Try {
+                                        # If the database targeted by the full backup is a member of an AlwaysOn Availibliy group as a secondary or if -CopyOnly is selected, proceed with a Copyonly backup
+                                        If (($CopyOnly) -or (($AlwaysOn) -and (($DB.AvailabilityGroupName -ne "") -and ($DB.IsUpdateable -ne "True")))) {
+                                            LogWrite "Taking a COPY-ONLY backup of $($DB.Name)" -Colour "Magenta"
+                                            $BackupParams.CopyOnly = $true
+                                        # Create a Full Database backup
+                                        } Else {
+                                            LogWrite "Taking a FULL backup of $($DB.Name)" -Colour "Magenta"
+                                        }
+
+                                        $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                        LogWrite "Success: Backup Completed in: $($Duration.Hours) hours $($Duration.Minutes) minutes $($Duration.Seconds) seconds" -Colour "Green"
+                                        $BackupCompleted = $true
+                                        $DatabaseCount++
+                                    } Catch {
+                                        [String]$ErrorMessage = $_.Exception.Message
+                                        If ($ErrorMessage -like "System.Data.SqlClient.SqlError: This BACKUP or RESTORE command is not supported on a database mirror or secondary replica*") {
+                                            If ($AlwaysOn) {
+                                                LogWrite "Full Backup Failed. Attempting a COPY-ONLY Backup for an AlwaysOn Database" -Colour "Yellow"
+                                                $BackupParams.CopyOnly = $true
+
+                                                Try {
+                                                    $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                                    LogWrite "Success: Backup Completed in: $($Duration.Hours) hours $($Duration.Minutes) minutes $($Duration.Seconds) seconds" -Colour "Green"
+                                                    $BackupCompleted = $true
+                                                    $DatabaseCount++
+                                                } Catch {
+                                                    $ErrorMessage = $_.Exception.Message
+                                                    $ErrorCount++
+                                                    $BackupCompleted = $false
+                                                    LogWrite "Error: There was an issue backing up the database: $($DB.Name). Please check the log for details" -Colour "Red"
+                                                    LogWrite -log "Error: $ErrorMessage"
+                                                }
+                                            } Else {
+                                                $ErrorCount++
+                                                $BackupCompleted = $false
+                                                LogWrite "Error: There was an issue backing up the database: $($DB.Name). If this database is on an AlwaysOn Secondary, supply the -AlwaysOn flag when backing up. Please check the log for details" -Colour "Red"
+                                                LogWrite -log "Error: $ErrorMessage"
+                                            }
+                                        } Else {
+                                            $ErrorCount++
+                                            $BackupCompleted = $false
+                                            LogWrite "Error: There was an issue backing up the database: $($DB.Name). Please check the log for details" -Colour "Red"
+                                            LogWrite -log "Error: $ErrorMessage"
+                                        }
                                     }
-                                    LogWrite "Success: Backup Completed in: $($Duration.Hours) hours $($Duration.Minutes) minutes $($Duration.Seconds) seconds" -Colour "Green"
-                                    $BackupCompleted = $true
-                                    $DatabaseCount++
-                                } Catch {
-                                    $ErrorMessage = $_.Exception.Message
-                                    $ErrorCount++
-                                    $BackupCompleted = $false
-                                    LogWrite "Error: There was an issue backing up the database: $($DB.Name). If this database is on an AlwaysOn Secondary, supply the -AlwaysOn flag when backing up. Please check the log for details" -Colour "Red"
-                                    LogWrite -log "Error: $ErrorMessage"
                                 }
                             # If the -Diff backup mode is selected continue with the Diff backup methods
                             } ElseIf ($BackupType -eq "DIFF") {
-                                If ((($DB.AvailabilityGroupName -ne "") -and ($DB.IsUpdateable -ne "TRUE")) -or ($DB.ID -lt 5)) {
+                                If ((($DB.AvailabilityGroupName -ne "") -and ($DB.IsUpdateable -ne "True")) -or ($DB.ID -lt 5)) {
                                     LogWrite "Skipping DIFF Backup for $($DB.Name) on server $($Server.ConnectionString). DIFF backup for AlwaysOn Read-Only or System databases are not supported" -Colour "Gray"
                                 } Else {
-                                    $BackupFile = "$InstancePath\$($DB.Name)\$($DB.Name).DIFF-$Date.bak"
+                                    $BackupFile = Get-BackupPath -Path $InstancePath -Database $DB.Name -Type 2
                                     LogWrite "Backup Location: $BackupFile"
                                     $BackupParams.BackupFile = $BackupFile
                                     $BackupParams.Incremental = $true
@@ -624,7 +708,7 @@ foreach ($i in $inst)
                             # If the -Log backup mode is selected continue with the Log backup methods
                             } ElseIf ($BackupType -eq "LOG") {
                                 If (!($DB.RecoveryModel -eq "Simple")) {
-                                    $BackupFile = "$InstancePath\$($DB.Name)\$($DB.Name).LOG-$Date.trn"
+                                    $BackupFile = Get-BackupPath -Path $InstancePath -Database $DB.Name -Type 3
                                     LogWrite "Backup Location: $BackupFile"
                                     $BackupParams.BackupFile = $BackupFile
                                     $BackupParams.BackupAction = "Log"
@@ -726,15 +810,13 @@ If ($Script) {
 }
 
 If ($ConnectionError -gt 0) {
-    LogWrite -log "Error: There were errors while connecting to one or more SQL Instances"
+    LogWrite "There were errors while connecting to one or more SQL Instances. Please check the log for details" -Colour "Red"
     LogWrite -Log "Number of Connection Errors: $ConnectionError"
-    Write-Warning "There were errors while connecting to one or more SQL Instances. Please check the log for details"
 }
 
 If ($ErrorCount -gt 0) {
-    LogWrite -log "Error: There were errors while backing up one or more databases"
+    LogWrite "There were errors while backing up or verifing one or more databases. Please check the log for details" -Colour "Red"
     LogWrite -Log "Number of Errors: $ErrorCount"
-    Write-Warning "There were errors while backing up or verifing one or more databases. Please check the log for details"
 }
 
 LogWrite "$($MyInvocation.MyCommand.Name) Completed Successfully"
