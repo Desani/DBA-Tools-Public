@@ -2,7 +2,6 @@
 #               Backup Database Creation              #
 #########################################################
 #Requires -Version 4
-#Requires -Modules SQLPS
 
 # If running this from a machine without SQLPS module installed, install the SqlServer Module using the command: Install-Module -Name SqlServer
 # https://docs.microsoft.com/en-us/sql/powershell/download-sql-server-ps-module?view=sql-server-2017
@@ -155,6 +154,7 @@ Version History
     1.3 - Added a function to check the length of the backup file and reduce it to fit within the 255 char limit
     1.4 - Added in checking for a DBNull value for an instance name returned
     1.5 - Changed how the -AlwaysOn flag worked to provide a fallback to a COPYONLY backup if a full backup fails
+    1.6 - Removing Requires for PSSQL Module as it was conflicting with SQLServer module when that was the only module installed
 #>
 
 Param (
@@ -180,7 +180,7 @@ Param (
     [String]$CSVFile # If providing a CSV or Text file, will execute against each server listed
 )
 
-$ScriptVersion = 1.5
+$ScriptVersion = 1.6
 $Date = "$((Get-Date).ToString('yyyyMMdd-hhmmss'))"
 $Instance = ""
 $CurrentDBA = $env:USERDOMAIN + "\" + $env:USERNAME
