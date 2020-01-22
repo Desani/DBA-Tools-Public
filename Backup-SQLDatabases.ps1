@@ -154,7 +154,7 @@ Version History
     1.3 - Added a function to check the length of the backup file and reduce it to fit within the 255 char limit
     1.4 - Added in checking for a DBNull value for an instance name returned
     1.5 - Changed how the -AlwaysOn flag worked to provide a fallback to a COPYONLY backup if a full backup fails
-    1.6 - Removing Requires for PSSQL Module as it was conflicting with SQLServer module when that was the only module installed
+    1.6 - Added Check for required PowerShell functions and corrected issue with matching multiple databases when using -database
 #>
 
 Param (
@@ -320,6 +320,19 @@ If ($CSVFile) {
     }
 }
 
+If (!(Get-Command Get-SqlDatabase -errorAction SilentlyContinue))
+{
+    Write-Warning "The command used by the script: Get-SqlDatabase is not currently installed."
+    Write-Warning "Please run the following command to update the SQLServer from an elevated PowerShell Prompt: Install-Module -Name SqlServer -AllowClobber"
+    Exit 10
+}
+If (!(Get-Command Backup-SqlDatabase -errorAction SilentlyContinue))
+{
+    Write-Warning "The command used by the script: Backup-SqlDatabase is not currently installed."
+    Write-Warning "Please run the following command to update the SQLServer from an elevated PowerShell Prompt: Install-Module -Name SqlServer -AllowClobber"
+    Exit 10
+}
+
 # Split out the Name of the Server and the Instance name from the supplied connection strings
 If (($ConnectionString -eq '') -and ($null -eq $InstanceArray)) {
     $Server = Get-ServerObject $env:COMPUTERNAME
@@ -328,6 +341,7 @@ If (($ConnectionString -eq '') -and ($null -eq $InstanceArray)) {
 } Else {
     $Server = Get-ServerObject $ConnectionString
 }
+
 
 # Check to make sure that the path is a network path if the backup is a remote server
 If ($Server.Name -ne $env:COMPUTERNAME.ToUpper()) {
@@ -403,24 +417,26 @@ Try {
 
 $LogObject = Get-Item -Path $Logfile
 
-If (Test-Path $QueryFile) {
+If ($Script) {
+    If (Test-Path $QueryFile) {
+        Try {
+            Remove-Item -Force -Path $QueryFile -ErrorAction Stop
+        } Catch {
+            LogWrite "Error: There was an issue removing the query file: $QueryFile" -Colour "Red"
+            LogWrite "Please manually remove this file and re-run script."
+            $ErrorMessage = $_.Exception.Message
+            LogWrite -log $ErrorMessage
+            Exit 10
+        }
+    }
+
     Try {
-        Remove-Item -Force -Path $QueryFile -ErrorAction Stop
+        New-Item -ItemType File -Force -Path $QueryFile | Out-Null
     } Catch {
-        LogWrite "Error: There was an issue removing the query file: $QueryFile" -Colour "Red"
-        LogWrite "Please manually remove this file and re-run script."
+        LogWrite "Error: There was an issue creating the query file: $QueryFile"
         $ErrorMessage = $_.Exception.Message
         LogWrite -log $ErrorMessage
-        Exit 10
     }
-}
-
-Try {
-    New-Item -ItemType File -Force -Path $QueryFile | Out-Null
-} Catch {
-    LogWrite "Error: There was an issue creating the query file: $QueryFile"
-    $ErrorMessage = $_.Exception.Message
-    LogWrite -log $ErrorMessage
 }
 
 $ErrorCount = 0
@@ -496,23 +512,25 @@ foreach ($i in $inst)
                 }
             }
 
-            If (Test-Path $QueryFile) {
+            If ($Script) {
+                If (Test-Path $QueryFile) {
+                    Try {
+                        Remove-Item -Force -Path $QueryFile -ErrorAction Stop
+                    } Catch {
+                        LogWrite "Error: There was an issue removing the query file: $QueryFile" -Colour "Red"
+                        LogWrite "Please manually remove this file and re-run script."
+                        $ErrorMessage = $_.Exception.Message
+                        LogWrite -log $ErrorMessage
+                    }
+                }
+                
                 Try {
-                    Remove-Item -Force -Path $QueryFile -ErrorAction Stop
+                    New-Item -ItemType File -Force -Path $QueryFile | Out-Null
                 } Catch {
-                    LogWrite "Error: There was an issue removing the query file: $QueryFile" -Colour "Red"
-                    LogWrite "Please manually remove this file and re-run script."
+                    LogWrite "Error: There was an issue creating the query file: $QueryFile"
                     $ErrorMessage = $_.Exception.Message
                     LogWrite -log $ErrorMessage
                 }
-            }
-            
-            Try {
-                New-Item -ItemType File -Force -Path $QueryFile | Out-Null
-            } Catch {
-                LogWrite "Error: There was an issue creating the query file: $QueryFile"
-                $ErrorMessage = $_.Exception.Message
-                LogWrite -log $ErrorMessage
             }
 
             LogWrite "Server name determined: $($Server.Name)" -Colour "Cyan"
@@ -571,7 +589,7 @@ foreach ($i in $inst)
     ForEach ($DB in $UserDBs)
     {
         # If the supplied database name using the -Database param has a value, check it with the current database name to make sure it is selected or else continue
-        If (($Database -ne "" -and $DbArray -match $DB.Name) -or ($Database -eq "")) {
+        If (($Database -ne "" -and $DbArray -contains $DB.Name) -or ($Database -eq "")) {
 
             # Checks the current database to make sure it is of normal status and it is not a snapshot before proceeding to backup
             If (($DB.Status -match "Normal*" -and $DB.IsDatabaseSnapshot -ne "True") -and ($DB.Name -ne "TempDB")) {
@@ -645,7 +663,12 @@ foreach ($i in $inst)
                                             LogWrite "Taking a FULL backup of $($DB.Name)" -Colour "Magenta"
                                         }
 
-                                        $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                        If ($Script) {
+                                            $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                        } Else {
+                                            $Duration = Measure-Command { Backup-SqlDatabase @BackupParams }
+                                        }
+                                        
                                         LogWrite "Success: Backup Completed in: $($Duration.Hours) hours $($Duration.Minutes) minutes $($Duration.Seconds) seconds" -Colour "Green"
                                         $BackupCompleted = $true
                                         $DatabaseCount++
@@ -657,7 +680,12 @@ foreach ($i in $inst)
                                                 $BackupParams.CopyOnly = $true
 
                                                 Try {
-                                                    $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                                    If ($Script) {
+                                                        $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                                    } Else {
+                                                        $Duration = Measure-Command { Backup-SqlDatabase @BackupParams }
+                                                    }
+
                                                     LogWrite "Success: Backup Completed in: $($Duration.Hours) hours $($Duration.Minutes) minutes $($Duration.Seconds) seconds" -Colour "Green"
                                                     $BackupCompleted = $true
                                                     $DatabaseCount++
@@ -693,7 +721,11 @@ foreach ($i in $inst)
                                     $BackupParams.Incremental = $true
                                     Try {
                                         LogWrite "Taking a DIFF backup of $($DB.Name)" -Colour "Magenta"
-                                        $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                        If ($Script) {
+                                            $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                        } Else {
+                                            $Duration = Measure-Command { Backup-SqlDatabase @BackupParams }
+                                        }
                                         LogWrite "Success: Backup Completed in: $($Duration.Hours) hours $($Duration.Minutes) minutes $($Duration.Seconds) seconds" -Colour "Green"
                                         $BackupCompleted = $true
                                         $DatabaseCount++
@@ -714,7 +746,11 @@ foreach ($i in $inst)
                                     $BackupParams.BackupAction = "Log"
                                     Try {
                                         LogWrite "Taking a LOG backup of $($DB.Name)"
-                                        $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                        If ($Script) {
+                                            $Duration = Measure-Command { Backup-SqlDatabase @BackupParams | Out-File -Append -FilePath $QueryFile }
+                                        } Else {
+                                            $Duration = Measure-Command { Backup-SqlDatabase @BackupParams }
+                                        }
                                         LogWrite "Success: Backup Completed in: $($Duration.Hours) hours $($Duration.Minutes) minutes $($Duration.Seconds) seconds" -Colour "Green"
                                         $BackupCompleted = $true
                                         $DatabaseCount++
@@ -763,7 +799,7 @@ foreach ($i in $inst)
                                     LogWrite "Deleting files older than $Retention Days" -Colour "Cyan"
                                     If ((Get-ChildItem -Path "$InstancePath\$($DB.Name)" -File -Force).count -gt 2) { # Make sure to leave at least 2 Backup Copies in the folder
                                         $RemoveMe = (Get-ChildItem -Path "$InstancePath\$($DB.Name)" -File -Force) |
-                                            Where-Object { ($_.CreationTime -lt (Get-Date).AddDays(-$Retention)) } 
+                                            Where-Object { ($_.LastWriteTime -lt (Get-Date).AddDays(-$Retention)) } 
                                         If ($RemoveMe) { 
                                             LogWrite "Deleting old backup files $($RemoveMe.Name)"
                                             Try {
@@ -797,7 +833,9 @@ foreach ($i in $inst)
 If ($Script) {
     Write-Warning "No backups have been completed"
     LogWrite -log "No backups have been completed"
-    LogWrite "The T-SQL Backup Scripts have been saved to: $QueryFile" -Colour "Green"
+    If ($Script){
+        LogWrite "The T-SQL Backup Scripts have been saved to: $QueryFile" -Colour "Green"
+    }
 } ElseIf ($WhatIf) {
     LogWrite -log "Whatif command has been used. No backups have been taken."
     Write-Warning "Whatif command has been used. No backups have been taken."
